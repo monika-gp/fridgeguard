@@ -1,21 +1,21 @@
 import { useState } from "react";
 
 const USERS = [
-  { id: "priya", name: "Priya", emoji: "🟣", color: "#7C3AED" },
-  { id: "alex",  name: "Alex",  emoji: "🟢", color: "#059669" },
-  { id: "ben",   name: "Ben",   emoji: "🟠", color: "#D97706" },
-  { id: "cleo",  name: "Cleo",  emoji: "🔴", color: "#DC2626" },
+  { id: "priya",  name: "Priya",  emoji: "🟣", color: "#7C3AED" },
+  { id: "rahul",  name: "Rahul",  emoji: "🟢", color: "#059669" },
+  { id: "sneha",  name: "Sneha",  emoji: "🟠", color: "#D97706" },
+  { id: "arjun",  name: "Arjun",  emoji: "🔴", color: "#DC2626" },
 ];
 
-const INITIAL_TRUST = { priya: 90, alex: 87, ben: 72, cleo: 91 };
+const INITIAL_TRUST = { priya: 95, rahul: 58, sneha: 89, arjun: 74 };
 
 const INITIAL_ITEMS = [
-  { id: 1, name: "Yogurt",        icon: "🥛", owner: "priya", expiry: "ok",   missing: true  },
-  { id: 2, name: "Leftover Rice", icon: "🍚", owner: "priya", expiry: "soon", missing: false },
-  { id: 3, name: "Orange Juice",  icon: "🍊", owner: "alex",  expiry: "ok",   missing: false },
-  { id: 4, name: "Cheese Block",  icon: "🧀", owner: "ben",   expiry: "bad",  missing: false },
-  { id: 5, name: "Eggs (6)",      icon: "🥚", owner: "ben",   expiry: "ok",   missing: false },
-  { id: 6, name: "Salad Leaves",  icon: "🥗", owner: "cleo",  expiry: "bad",  missing: false },
+  { id: 1, name: "Curd",        icon: "🥛", owner: "priya",  expiry: "soon", missing: false },
+  { id: 2, name: "Chapati",     icon: "🫓", owner: "priya",  expiry: "bad",  missing: true  },
+  { id: 3, name: "Mango Juice", icon: "🥭", owner: "rahul",  expiry: "ok",   missing: false },
+  { id: 4, name: "Biryani Box", icon: "🍱", owner: "rahul",  expiry: "bad",  missing: false },
+  { id: 5, name: "Eggs (6)",    icon: "🥚", owner: "sneha",  expiry: "ok",   missing: false },
+  { id: 6, name: "Butter",      icon: "🧈", owner: "arjun",  expiry: "soon", missing: true  },
 ];
 
 const EXPIRY_LABEL = { ok: "✅ Fresh", soon: "⚠️ Expires soon", bad: "❌ Expires today" };
@@ -32,6 +32,13 @@ export default function App() {
   const [trust, setTrust] = useState(INITIAL_TRUST);
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [history, setHistory] = useState([
+    { id: 1, text: "Priya added Curd to the fridge", time: "2 hours ago", icon: "➕" },
+    { id: 2, text: "Arjun's Butter was flagged missing", time: "1 hour ago", icon: "⚠️" },
+    { id: 3, text: "Arjun's trust score dropped to 74", time: "1 hour ago", icon: "📉" },
+    { id: 4, text: "Priya's Chapati was flagged missing", time: "45 mins ago", icon: "⚠️" },
+    { id: 5, text: "Rahul added Mango Juice to the fridge", time: "30 mins ago", icon: "➕" },
+  ]);
 
   const user = USERS.find(u => u.id === currentUser);
 
@@ -53,14 +60,25 @@ export default function App() {
       id: Date.now(), name: newItem.name, icon: newItem.icon,
       owner: currentUser, expiry: newItem.expiry, missing: false,
     }]);
+    setHistory(prev => [
+      { id: Date.now(), text: `${user.name} added ${newItem.icon} ${newItem.name} to the fridge`, time: "Just now", icon: "➕" },
+      ...prev,
+    ]);
     setNewItem({ name: "", icon: "🍱", expiry: "ok" });
     setShowAdd(false);
   }
 
   function flagMissing(id) {
     const item = items.find(i => i.id === id);
+    const owner = USERS.find(u => u.id === item.owner);
     setItems(items.map(i => i.id === id ? { ...i, missing: true } : i));
     setTrust(prev => ({ ...prev, [item.owner]: Math.max(0, prev[item.owner] - 10) }));
+    const newScore = Math.max(0, trust[item.owner] - 10);
+    setHistory(prev => [
+      { id: Date.now(), text: `${item.icon} ${item.name} was flagged missing`, time: "Just now", icon: "⚠️" },
+      { id: Date.now() + 1, text: `${owner.name}'s trust score dropped to ${newScore}`, time: "Just now", icon: "📉" },
+      ...prev,
+    ]);
   }
 
   function removeItem(id) {
@@ -95,7 +113,7 @@ export default function App() {
     card:       { background: "white", borderRadius: 20, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", width: "100%", maxWidth: 400 },
     appWrap:    { maxWidth: 480, margin: "0 auto", padding: 16 },
     header:     { background: "white", borderRadius: 16, padding: "12px 16px", marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" },
-    tabRow:     { display: "flex", gap: 8, marginBottom: 16 },
+    tabRow:     { display: "flex", gap: 6, marginBottom: 16 },
     tab:        (active) => ({ flex: 1, padding: "10px 4px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 500, fontSize: 13, background: active ? "#4F46E5" : "white", color: active ? "white" : "#6B7280", boxShadow: active ? "0 2px 8px rgba(79,70,229,0.3)" : "0 1px 4px rgba(0,0,0,0.06)" }),
     itemCard:   (mine) => ({ background: mine ? "#F5F3FF" : "white", border: `1px solid ${mine ? "#DDD8FF" : "#F3F4F6"}`, borderRadius: 14, padding: 14, marginBottom: 10, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }),
     badge:      (expiry) => ({ fontSize: 11, padding: "3px 8px", borderRadius: 99, background: EXPIRY_COLOR[expiry], color: EXPIRY_TEXT[expiry], fontWeight: 500 }),
@@ -104,7 +122,7 @@ export default function App() {
     statCard:   { background: "white", borderRadius: 14, padding: 16, flex: 1, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", textAlign: "center" },
   };
 
-  // ── LOGIN SCREEN ──
+  // LOGIN SCREEN
   if (screen === "login") return (
     <div style={s.page}>
       <div style={s.center}>
@@ -118,9 +136,9 @@ export default function App() {
           <p style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 16, textAlign: "center" }}>Who are you? Pick your profile 👇</p>
           {USERS.map(u => (
             <button key={u.id} onClick={() => login(u.id)}
-              style={{ width: "100%", padding: "14px 18px", borderRadius: 14, border: `2px solid #F3F4F6`,
+              style={{ width: "100%", padding: "14px 18px", borderRadius: 14, border: "2px solid #F3F4F6",
                 background: "white", marginBottom: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 14,
-                transition: "all 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
               <span style={{ fontSize: 24 }}>{u.emoji}</span>
               <div style={{ textAlign: "left" }}>
                 <div style={{ fontWeight: 600, color: "#1F2937", fontSize: 15 }}>{u.name}</div>
@@ -135,7 +153,7 @@ export default function App() {
     </div>
   );
 
-  // ── MAIN APP ──
+  // MAIN APP
   return (
     <div style={s.page}>
       <div style={s.appWrap}>
@@ -152,7 +170,7 @@ export default function App() {
           <button onClick={logout} style={s.btn("#F3F4F6", "#6B7280")}>← Switch</button>
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
           <div style={s.statCard}>
             <div style={{ fontSize: 22, fontWeight: 700, color: "#4F46E5" }}>{myItems.length}</div>
@@ -170,9 +188,9 @@ export default function App() {
 
         {/* Tabs */}
         <div style={s.tabRow}>
-          {["fridge","alerts","trust","ai"].map(t => (
+          {["fridge", "alerts", "trust", "ai", "history"].map(t => (
             <button key={t} style={s.tab(tab === t)} onClick={() => setTab(t)}>
-              {t === "fridge" ? "🧊 Fridge" : t === "alerts" ? `🔔 ${alerts.length > 0 ? `(${alerts.length})` : "Alerts"}` : t === "trust" ? "🏆 Trust" : "🤖 AI"}
+              {t === "fridge" ? "🧊" : t === "alerts" ? `🔔${alerts.length > 0 ? `(${alerts.length})` : ""}` : t === "trust" ? "🏆" : t === "ai" ? "🤖" : "📋"}
             </button>
           ))}
         </div>
@@ -197,13 +215,13 @@ export default function App() {
 
             {showAdd ? (
               <div style={{ background: "white", borderRadius: 14, padding: 16, marginTop: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
-                <input placeholder="Item name (e.g. Milk)" value={newItem.name}
+                <input placeholder="Item name (e.g. Dal)" value={newItem.name}
                   onChange={e => setNewItem({ ...newItem, name: e.target.value })}
                   style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #E5E7EB", marginBottom: 10, boxSizing: "border-box", fontSize: 14 }} />
                 <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                  {["🍱","🥛","🍎","🧀","🥚","🍊","🥗","🧈","🍚"].map(e => (
+                  {["🍱","🥛","🍎","🧀","🥚","🥭","🥗","🧈","🫓"].map(e => (
                     <span key={e} onClick={() => setNewItem({ ...newItem, icon: e })}
-                      style={{ fontSize: 24, cursor: "pointer", opacity: newItem.icon === e ? 1 : 0.3, transition: "opacity 0.2s" }}>{e}</span>
+                      style={{ fontSize: 24, cursor: "pointer", opacity: newItem.icon === e ? 1 : 0.3 }}>{e}</span>
                   ))}
                 </div>
                 <select value={newItem.expiry} onChange={e => setNewItem({ ...newItem, expiry: e.target.value })}
@@ -315,6 +333,26 @@ export default function App() {
             <p style={{ fontSize: 11, color: "#9CA3AF", marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>
               AI reads your fridge in real time and gives<br/>personalized advice for {user.name}
             </p>
+          </div>
+        )}
+
+        {/* History Tab */}
+        {tab === "history" && (
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 14 }}>📋 Activity History</p>
+            {history.map(h => (
+              <div key={h.id} style={{ background: "white", border: "1px solid #F3F4F6",
+                borderLeft: `4px solid ${h.icon === "⚠️" ? "#DC2626" : h.icon === "📉" ? "#D97706" : "#059669"}`,
+                borderRadius: 14, padding: 14, marginBottom: 10,
+                display: "flex", alignItems: "center", gap: 12,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <span style={{ fontSize: 20 }}>{h.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: "#1F2937", fontWeight: 500 }}>{h.text}</div>
+                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 3 }}>🕐 {h.time}</div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
