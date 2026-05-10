@@ -7,6 +7,13 @@ const USERS = [
   { id: "cleo",  name: "Cleo",  emoji: "🔴" },
 ];
 
+const INITIAL_TRUST = {
+  priya: 100,
+  alex:  87,
+  ben:   72,
+  cleo:  91,
+};
+
 const INITIAL_ITEMS = [
   { id: 1, name: "Yogurt",       icon: "🥛", owner: "priya", expiry: "ok",   missing: true  },
   { id: 2, name: "Leftover Rice",icon: "🍚", owner: "priya", expiry: "soon", missing: false },
@@ -24,6 +31,7 @@ export default function App() {
   const [tab, setTab] = useState("fridge");
   const [newItem, setNewItem] = useState({ name: "", icon: "🍱", expiry: "ok" });
   const [showAdd, setShowAdd] = useState(false);
+  const [trust, setTrust] = useState(INITIAL_TRUST);
 
   const user = USERS.find(u => u.id === currentUser);
 
@@ -42,7 +50,12 @@ export default function App() {
   }
 
   function flagMissing(id) {
+    const item = items.find(i => i.id === id);
     setItems(items.map(i => i.id === id ? { ...i, missing: true } : i));
+    setTrust(prev => ({
+      ...prev,
+      [item.owner]: Math.max(0, prev[item.owner] - 10)
+    }));
   }
 
   function removeItem(id) {
@@ -69,12 +82,12 @@ export default function App() {
       </div>
 
       {/* Tabs */}
-      {["fridge","alerts"].map(t => (
+      {["fridge", "alerts", "trust"].map(t => (
         <button key={t} onClick={() => setTab(t)}
           style={{ marginRight: 8, padding: "6px 16px", borderRadius: 20,
             background: tab === t ? "#4F46E5" : "#eee",
             color: tab === t ? "white" : "black", border: "none", cursor: "pointer", marginBottom: 16 }}>
-          {t === "fridge" ? "🧊 Fridge" : `🔔 Alerts ${alerts.length > 0 ? `(${alerts.length})` : ""}`}
+          {t === "fridge" ? "🧊 Fridge" : t === "alerts" ? `🔔 Alerts ${alerts.length > 0 ? `(${alerts.length})` : ""}` : "🏆 Trust"}
         </button>
       ))}
 
@@ -98,7 +111,6 @@ export default function App() {
             </div>
           ))}
 
-          {/* Add Item */}
           {showAdd ? (
             <div style={{ background: "#f9f9f9", border: "1px solid #ddd", borderRadius: 12, padding: 12, marginTop: 8 }}>
               <input placeholder="Item name (e.g. Milk)" value={newItem.name}
@@ -167,6 +179,41 @@ export default function App() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Trust Tab */}
+      {tab === "trust" && (
+        <div>
+          <h4 style={{ marginBottom: 16 }}>🏆 Trust Leaderboard</h4>
+          {USERS
+            .slice()
+            .sort((a, b) => trust[b.id] - trust[a.id])
+            .map((u, index) => {
+              const score = trust[u.id];
+              const color = score >= 80 ? "#16A34A" : score >= 50 ? "#D97706" : "#DC2626";
+              const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "  ";
+              return (
+                <div key={u.id} style={{ background: currentUser === u.id ? "#F5F3FF" : "#fafafa",
+                  border: `1px solid ${currentUser === u.id ? "#DDD8FF" : "#eee"}`,
+                  borderRadius: 12, padding: 12, marginBottom: 8,
+                  display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 22 }}>{medal}</span>
+                  <span style={{ fontSize: 20 }}>{u.emoji}</span>
+                  <div style={{ flex: 1 }}>
+                    <strong>{u.name}</strong> {currentUser === u.id && <span style={{ fontSize: 11, background: "#4F46E5", color: "white", padding: "1px 7px", borderRadius: 99 }}>You</span>}
+                    <div style={{ marginTop: 6, background: "#eee", borderRadius: 99, height: 8, overflow: "hidden" }}>
+                      <div style={{ width: `${score}%`, background: color, height: "100%", borderRadius: 99, transition: "width 0.4s" }} />
+                    </div>
+                  </div>
+                  <span style={{ fontWeight: 600, color, minWidth: 36, textAlign: "right" }}>{score}</span>
+                </div>
+              );
+            })}
+          <p style={{ fontSize: 12, color: "gray", marginTop: 12, lineHeight: 1.6 }}>
+            ⚠️ Scores drop by 10 when your item is flagged missing.<br/>
+            Stay honest to keep your score high!
+          </p>
         </div>
       )}
 
