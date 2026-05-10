@@ -32,6 +32,8 @@ export default function App() {
   const [newItem, setNewItem] = useState({ name: "", icon: "🍱", expiry: "ok" });
   const [showAdd, setShowAdd] = useState(false);
   const [trust, setTrust] = useState(INITIAL_TRUST);
+  const [aiMessage, setAiMessage] = useState("Hi! I'm your FridgeGuard AI. Click the button below to get your fridge summary!");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const user = USERS.find(u => u.id === currentUser);
 
@@ -62,6 +64,37 @@ export default function App() {
     setItems(items.filter(i => i.id !== id));
   }
 
+  async function askAI() {
+    setAiLoading(true);
+    setAiMessage("Thinking...");
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    const myItems = items.filter(i => i.owner === currentUser);
+    const missingItems = items.filter(i => i.missing && i.owner === currentUser);
+    const expiringItems = items.filter(i => (i.expiry === "bad" || i.expiry === "soon") && i.owner === currentUser);
+    const myTrust = trust[currentUser];
+
+    let message = `Hi ${user.name}! 👋 `;
+
+    if (missingItems.length > 0)
+      message += `⚠️ Your ${missingItems.map(i => i.name).join(", ")} has been flagged as missing — check with your roommates! `;
+
+    if (expiringItems.length > 0)
+      message += `🕐 Your ${expiringItems.map(i => i.name).join(", ")} is expiring soon — use it today! `;
+
+    if (myItems.length === 0)
+      message += `You have no items in the fridge right now. `;
+
+    if (myTrust < 80)
+      message += `📉 Your trust score is ${myTrust}/100 — try resolving any open disputes to improve it.`;
+    else
+      message += `✅ Your trust score is ${myTrust}/100 — keep it up!`;
+
+    setAiMessage(message);
+    setAiLoading(false);
+  }
+
   const myItems    = items.filter(i => i.owner === currentUser);
   const otherItems = items.filter(i => i.owner !== currentUser);
   const alerts     = items.filter(i => i.missing || i.expiry === "bad");
@@ -82,12 +115,12 @@ export default function App() {
       </div>
 
       {/* Tabs */}
-      {["fridge", "alerts", "trust"].map(t => (
+      {["fridge", "alerts", "trust", "ai"].map(t => (
         <button key={t} onClick={() => setTab(t)}
           style={{ marginRight: 8, padding: "6px 16px", borderRadius: 20,
             background: tab === t ? "#4F46E5" : "#eee",
             color: tab === t ? "white" : "black", border: "none", cursor: "pointer", marginBottom: 16 }}>
-          {t === "fridge" ? "🧊 Fridge" : t === "alerts" ? `🔔 Alerts ${alerts.length > 0 ? `(${alerts.length})` : ""}` : "🏆 Trust"}
+          {t === "fridge" ? "🧊 Fridge" : t === "alerts" ? `🔔 Alerts ${alerts.length > 0 ? `(${alerts.length})` : ""}` : t === "trust" ? "🏆 Trust" : "🤖 AI"}
         </button>
       ))}
 
@@ -213,6 +246,27 @@ export default function App() {
           <p style={{ fontSize: 12, color: "gray", marginTop: 12, lineHeight: 1.6 }}>
             ⚠️ Scores drop by 10 when your item is flagged missing.<br/>
             Stay honest to keep your score high!
+          </p>
+        </div>
+      )}
+
+      {/* AI Tab */}
+      {tab === "ai" && (
+        <div>
+          <h4 style={{ marginBottom: 12 }}>🤖 FridgeGuard AI</h4>
+          <div style={{ background: "#F5F3FF", border: "1px solid #DDD8FF", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: "#1e1b4b", lineHeight: 1.7, margin: 0 }}>
+              {aiLoading ? "🤔 Thinking..." : aiMessage}
+            </p>
+          </div>
+          <button onClick={askAI} disabled={aiLoading}
+            style={{ width: "100%", padding: 12, background: aiLoading ? "#aaa" : "#4F46E5",
+              color: "white", border: "none", borderRadius: 10, cursor: aiLoading ? "not-allowed" : "pointer",
+              fontSize: 15, fontWeight: 500 }}>
+            {aiLoading ? "⏳ Getting your summary..." : `✨ Get my fridge summary as ${user.name}`}
+          </button>
+          <p style={{ fontSize: 11, color: "gray", marginTop: 8, textAlign: "center" }}>
+            AI reads your fridge in real time and gives personalized advice
           </p>
         </div>
       )}
