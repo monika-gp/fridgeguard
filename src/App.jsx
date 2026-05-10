@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const USERS = [
   { id: "priya",  name: "Priya",  emoji: "🟣", color: "#7C3AED" },
@@ -25,20 +25,29 @@ const EXPIRY_TEXT  = { ok: "#065F46", soon: "#92400E", bad: "#991B1B" };
 export default function App() {
   const [screen, setScreen] = useState("login");
   const [currentUser, setCurrentUser] = useState(null);
-  const [items, setItems] = useState(INITIAL_ITEMS);
+  const [items, setItems] = useState(() => {
+    const saved = localStorage.getItem("fridgeguard-items");
+    return saved ? JSON.parse(saved) : INITIAL_ITEMS;
+  });
   const [tab, setTab] = useState("fridge");
   const [newItem, setNewItem] = useState({ name: "", icon: "🍱", expiry: "ok" });
   const [showAdd, setShowAdd] = useState(false);
-  const [trust, setTrust] = useState(INITIAL_TRUST);
+  const [trust, setTrust] = useState(() => {
+    const saved = localStorage.getItem("fridgeguard-trust");
+    return saved ? JSON.parse(saved) : INITIAL_TRUST;
+  });
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [history, setHistory] = useState([
-    { id: 1, text: "Priya added Curd to the fridge", time: "2 hours ago", icon: "➕" },
-    { id: 2, text: "Arjun's Butter was flagged missing", time: "1 hour ago", icon: "⚠️" },
-    { id: 3, text: "Arjun's trust score dropped to 74", time: "1 hour ago", icon: "📉" },
-    { id: 4, text: "Priya's Chapati was flagged missing", time: "45 mins ago", icon: "⚠️" },
-    { id: 5, text: "Rahul added Mango Juice to the fridge", time: "30 mins ago", icon: "➕" },
-  ]);
+  const [history, setHistory] = useState(() => {
+    const saved = localStorage.getItem("fridgeguard-history");
+    return saved ? JSON.parse(saved) : [
+      { id: 1, text: "Priya added Curd to the fridge", time: "2 hours ago", icon: "➕" },
+      { id: 2, text: "Arjun's Butter was flagged missing", time: "1 hour ago", icon: "⚠️" },
+      { id: 3, text: "Arjun's trust score dropped to 74", time: "1 hour ago", icon: "📉" },
+      { id: 4, text: "Priya's Chapati was flagged missing", time: "45 mins ago", icon: "⚠️" },
+      { id: 5, text: "Rahul added Mango Juice to the fridge", time: "30 mins ago", icon: "➕" },
+    ];
+  });
 
   const user = USERS.find(u => u.id === currentUser);
 
@@ -103,6 +112,18 @@ export default function App() {
     setAiLoading(false);
   }
 
+  useEffect(() => {
+    localStorage.setItem("fridgeguard-items", JSON.stringify(items));
+  }, [items]);
+
+  useEffect(() => {
+    localStorage.setItem("fridgeguard-trust", JSON.stringify(trust));
+  }, [trust]);
+
+  useEffect(() => {
+    localStorage.setItem("fridgeguard-history", JSON.stringify(history));
+  }, [history]);
+  
   const myItems    = items.filter(i => i.owner === currentUser);
   const otherItems = items.filter(i => i.owner !== currentUser);
   const alerts     = items.filter(i => i.missing || i.expiry === "bad");
