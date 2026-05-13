@@ -20,6 +20,22 @@ const INITIAL_ITEMS = [
 ];
 
 const EXPIRY_LABEL = { ok: "✅ Fresh", soon: "⚠️ Expires soon", bad: "❌ Expires today" };
+
+function getExpiryStatus(dateStr) {
+  if (!dateStr) return "ok";
+  const today = new Date();
+  const expiry = new Date(dateStr);
+  const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return "bad";
+  if (diffDays <= 2) return "soon";
+  return "ok";
+}
+
+function formatExpiryDate(dateStr) {
+  if (!dateStr) return "No expiry set";
+  const expiry = new Date(dateStr);
+  return expiry.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
 const EXPIRY_COLOR = { ok: "#D1FAE5", soon: "#FEF3C7", bad: "#FEE2E2" };
 const EXPIRY_TEXT  = { ok: "#065F46", soon: "#92400E", bad: "#991B1B" };
 
@@ -163,6 +179,7 @@ export default function App() {
       icon: newItem.icon,
       owner: currentUser,
       expiry: newItem.expiry,
+      expiry_date: newItem.expiryDate || null,
       missing: false,
     };
     const { data } = await supabase.from("items").insert([item]).select();
@@ -221,7 +238,7 @@ export default function App() {
   }
 
   const myItems    = items.filter(i => i.owner === currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
-const otherItems = items.filter(i => i.owner !== currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
+  const otherItems = items.filter(i => i.owner !== currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
   const alerts     = items.filter(i => i.missing || i.expiry === "bad");
 
   const s = {
@@ -325,7 +342,9 @@ const otherItems = items.filter(i => i.owner !== currentUser && i.name.toLowerCa
                   <div style={{ fontWeight: 600, color: "#1F2937", fontSize: 14 }}>
                     {item.name} {item.missing && <span style={{ color: "#DC2626", fontSize: 12 }}>⚠️ Missing</span>}
                   </div>
-                  <span style={s.badge(item.expiry)}>{EXPIRY_LABEL[item.expiry]}</span>
+                  <span style={s.badge(item.expiry)}>
+  {EXPIRY_LABEL[item.expiry]} {item.expiry_date ? `· ${formatExpiryDate(item.expiry_date)}` : ""}
+</span>
                 </div>
                 <button onClick={() => removeItem(item.id)} style={s.btn("#FEE2E2", "#DC2626")}>Remove</button>
               </div>
@@ -342,12 +361,18 @@ const otherItems = items.filter(i => i.owner !== currentUser && i.name.toLowerCa
                       style={{ fontSize: 24, cursor: "pointer", opacity: newItem.icon === e ? 1 : 0.3 }}>{e}</span>
                   ))}
                 </div>
-                <select value={newItem.expiry} onChange={e => setNewItem({ ...newItem, expiry: e.target.value })}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #E5E7EB", marginBottom: 10, fontSize: 14 }}>
-                  <option value="ok">✅ Fresh</option>
-                  <option value="soon">⚠️ Expires soon</option>
-                  <option value="bad">❌ Expires today</option>
-                </select>
+                <div style={{ marginBottom: 10 }}>
+  <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>
+    Expiry Date
+  </label>
+  <input
+    type="date"
+    value={newItem.expiryDate || ""}
+    min={new Date().toISOString().split("T")[0]}
+    onChange={e => setNewItem({ ...newItem, expiryDate: e.target.value, expiry: getExpiryStatus(e.target.value) })}
+    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 14, boxSizing: "border-box" }}
+  />
+</div>
                 <button onClick={addItem} style={s.primaryBtn}>➕ Add to Fridge</button>
               </div>
             ) : (
@@ -369,7 +394,9 @@ const otherItems = items.filter(i => i.owner !== currentUser && i.name.toLowerCa
                       {item.name} {item.missing && <span style={{ color: "#DC2626", fontSize: 12 }}>⚠️ Missing</span>}
                     </div>
                     <div style={{ fontSize: 12, color: "#9CA3AF" }}>{owner.emoji} {owner.name}</div>
-                    <span style={s.badge(item.expiry)}>{EXPIRY_LABEL[item.expiry]}</span>
+                    <span style={s.badge(item.expiry)}>
+  {EXPIRY_LABEL[item.expiry]} {item.expiry_date ? `· ${formatExpiryDate(item.expiry_date)}` : ""}
+</span>
                   </div>
                   <button onClick={() => flagMissing(item.id)} style={s.btn("#FEF3C7", "#92400E")}>Flag</button>
                 </div>
