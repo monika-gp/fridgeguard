@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
 import { useState, useEffect } from "react";
+const USER_PROFILES = {
+  "priya@fridgeguard.com":  { id: "priya",  name: "Priya",  emoji: "🟣", color: "#7C3AED" },
+  "rahul@fridgeguard.com":  { id: "rahul",  name: "Rahul",  emoji: "🟢", color: "#059669" },
+  "sneha@fridgeguard.com":  { id: "sneha",  name: "Sneha",  emoji: "🟠", color: "#D97706" },
+  "arjun@fridgeguard.com":  { id: "arjun",  name: "Arjun",  emoji: "🔴", color: "#DC2626" },
+};
 
 const USERS = [
   { id: "priya",  name: "Priya",  emoji: "🟣", color: "#7C3AED" },
@@ -50,6 +56,9 @@ export default function App() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [history, setHistory] = useState([]);
 
   const user = USERS.find(u => u.id === currentUser);
@@ -160,14 +169,25 @@ export default function App() {
     await supabase.from("history").insert([{ user_id: userId, action, item_name: itemName }]);
   }
 
-  function login(userId) {
-    setCurrentUser(userId);
+  async function login(email, password) {
+    setLoginError("");
+    setLoginLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setLoginError("Wrong email or password. Try again!");
+      setLoginLoading(false);
+      return;
+    }
+    const profile = USER_PROFILES[email];
+    setCurrentUser(profile.id);
     setScreen("app");
     setTab("fridge");
     setAiMessage("");
+    setLoginLoading(false);
   }
 
-  function logout() {
+  async function logout() {
+    await supabase.auth.signOut();
     setScreen("login");
     setCurrentUser(null);
   }
@@ -266,26 +286,63 @@ export default function App() {
             <p style={{ color: "#6B7280", margin: "6px 0 0", fontSize: 14 }}>Smart hostel fridge assistant</p>
             <div style={{ width: 40, height: 3, background: "linear-gradient(90deg,#4F46E5,#7C3AED)", borderRadius: 99, margin: "12px auto 0" }} />
           </div>
-          <p style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 16, textAlign: "center" }}>Who are you? Pick your profile 👇</p>
-          {USERS.map(u => (
-            <button key={u.id} onClick={() => login(u.id)}
-              style={{ width: "100%", padding: "14px 18px", borderRadius: 14, border: "2px solid #F3F4F6",
-                background: "white", marginBottom: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 14,
-                boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <span style={{ fontSize: 24 }}>{u.emoji}</span>
-              <div style={{ textAlign: "left" }}>
-                <div style={{ fontWeight: 600, color: "#1F2937", fontSize: 15 }}>{u.name}</div>
-                <div style={{ fontSize: 12, color: "#9CA3AF" }}>Trust score: {INITIAL_TRUST[u.id]}/100</div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>Email</label>
+            <input
+              type="email"
+              placeholder="priya@fridgeguard.com"
+              value={loginForm.email}
+              onChange={e => setLoginForm({ ...loginForm, email: e.target.value })}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #E5E7EB",
+                fontSize: 14, boxSizing: "border-box", outline: "none" }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>Password</label>
+            <input
+              type="password"
+              placeholder="Your password"
+              value={loginForm.password}
+              onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #E5E7EB",
+                fontSize: 14, boxSizing: "border-box", outline: "none" }}
+            />
+          </div>
+
+          {loginError && (
+            <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "8px 12px",
+              borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+              {loginError}
+            </div>
+          )}
+
+          <button
+            onClick={() => login(loginForm.email, loginForm.password)}
+            disabled={loginLoading}
+            style={{ ...s.primaryBtn, opacity: loginLoading ? 0.7 : 1, cursor: loginLoading ? "not-allowed" : "pointer" }}>
+            {loginLoading ? "⏳ Logging in..." : "🔐 Login"}
+          </button>
+
+          <div style={{ marginTop: 20, padding: 14, background: "#F5F3FF", borderRadius: 12 }}>
+            <p style={{ fontSize: 11, color: "#7C3AED", fontWeight: 600, marginBottom: 8 }}>Demo accounts:</p>
+            {Object.entries(USER_PROFILES).map(([email, profile]) => (
+              <div key={email} onClick={() => setLoginForm({ email, password: `${profile.name}@123` })}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0",
+                  cursor: "pointer", borderBottom: "1px solid #EDE9FE" }}>
+                <span>{profile.emoji}</span>
+                <span style={{ fontSize: 12, color: "#4F46E5" }}>{email}</span>
               </div>
-              <span style={{ marginLeft: "auto", color: "#C4B5FD", fontSize: 18 }}>→</span>
-            </button>
-          ))}
-          <p style={{ fontSize: 11, color: "#D1D5DB", textAlign: "center", marginTop: 8 }}>Room 4B · 4 roommates</p>
+            ))}
+            <p style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>Click any account to autofill</p>
+          </div>
+
+          <p style={{ fontSize: 11, color: "#D1D5DB", textAlign: "center", marginTop: 12 }}>Room 4B · 4 roommates</p>
         </div>
       </div>
     </div>
   );
-
   return (
     <div style={s.page}>
       <div style={s.appWrap}>
