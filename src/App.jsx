@@ -33,6 +33,7 @@ export default function App() {
   const [trust, setTrust] = useState(INITIAL_TRUST);
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [search, setSearch] = useState("");
   const [history, setHistory] = useState([]);
 
   const user = USERS.find(u => u.id === currentUser);
@@ -60,6 +61,75 @@ export default function App() {
       }
     }
     loadAll();
+
+    // REALTIME LISTENERS
+    const itemsSub = supabase
+      .channel("any")
+      .on("postgres_changes", { event: "*", schema: "public", table: "items" }, (payload) => {
+        console.log("Realtime items change:", payload);
+        supabase.from("items").select("*").then(({ data }) => {
+          if (data) setItems(data);
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "trust_scores" }, () => {
+        supabase.from("trust_scores").select("*").then(({ data }) => {
+          if (data) {
+            const trustObj = {};
+            data.forEach(row => { trustObj[row.user_id] = row.score; });
+            setTrust(trustObj);
+          }
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "history" }, () => {
+        supabase.from("history").select("*").order("created_at", { ascending: false }).limit(20).then(({ data }) => {
+          if (data) setHistory(data.map(h => ({
+            id: h.id,
+            text: formatHistory(h),
+            icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
+            time: "Recently",
+          })));
+        });
+      })
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(itemsSub);
+    };
+
+    const trustSub = supabase
+      .channel("trust-channel")
+      .on("postgres_changes", { event: "*", schema: "public", table: "trust_scores" }, () => {
+        supabase.from("trust_scores").select("*").then(({ data }) => {
+          if (data) {
+            const trustObj = {};
+            data.forEach(row => { trustObj[row.user_id] = row.score; });
+            setTrust(trustObj);
+          }
+        });
+      })
+      .subscribe();
+
+    const historySub = supabase
+      .channel("history-channel")
+      .on("postgres_changes", { event: "*", schema: "public", table: "history" }, () => {
+        supabase.from("history").select("*").order("created_at", { ascending: false }).limit(20).then(({ data }) => {
+          if (data) setHistory(data.map(h => ({
+            id: h.id,
+            text: formatHistory(h),
+            icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
+            time: "Recently",
+          })));
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(itemsSub);
+      supabase.removeChannel(trustSub);
+      supabase.removeChannel(historySub);
+    };
   }, []);
 
   function formatHistory(h) {
@@ -136,7 +206,7 @@ export default function App() {
     setAiLoading(true);
     setAiMessage("Thinking...");
     await new Promise(r => setTimeout(r, 2000));
-    const myItems = items.filter(i => i.owner === currentUser);
+    const myItems    = items.filter(i => i.owner === currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
     const missingItems = items.filter(i => i.missing && i.owner === currentUser);
     const expiringItems = items.filter(i => (i.expiry === "bad" || i.expiry === "soon") && i.owner === currentUser);
     const myTrust = trust[currentUser];
@@ -150,8 +220,8 @@ export default function App() {
     setAiLoading(false);
   }
 
-  const myItems    = items.filter(i => i.owner === currentUser);
-  const otherItems = items.filter(i => i.owner !== currentUser);
+  const myItems    = items.filter(i => i.owner === currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
+const otherItems = items.filter(i => i.owner !== currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
   const alerts     = items.filter(i => i.missing || i.expiry === "bad");
 
   const s = {
@@ -239,6 +309,13 @@ export default function App() {
 
         {tab === "fridge" && (
           <div>
+            <input
+            placeholder="🔍 Search items..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #E5E7EB",
+            marginBottom: 14, boxSizing: "border-box", fontSize: 14, outline: "none" }}
+            />
             <p style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5", marginBottom: 10 }}>Your Items</p>
             {myItems.length === 0 && <p style={{ color: "#9CA3AF", fontSize: 13 }}>You have no items in the fridge.</p>}
             {myItems.map(item => (
