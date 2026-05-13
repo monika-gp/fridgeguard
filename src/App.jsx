@@ -1,3 +1,4 @@
+import { supabase } from './supabase'
 import { useState, useEffect } from "react";
 
 const USERS = [
@@ -25,31 +26,53 @@ const EXPIRY_TEXT  = { ok: "#065F46", soon: "#92400E", bad: "#991B1B" };
 export default function App() {
   const [screen, setScreen] = useState("login");
   const [currentUser, setCurrentUser] = useState(null);
-  const [items, setItems] = useState(() => {
-    const saved = localStorage.getItem("fridgeguard-items");
-    return saved ? JSON.parse(saved) : INITIAL_ITEMS;
-  });
+  const [items, setItems] = useState([]);
   const [tab, setTab] = useState("fridge");
   const [newItem, setNewItem] = useState({ name: "", icon: "🍱", expiry: "ok" });
   const [showAdd, setShowAdd] = useState(false);
-  const [trust, setTrust] = useState(() => {
-    const saved = localStorage.getItem("fridgeguard-trust");
-    return saved ? JSON.parse(saved) : INITIAL_TRUST;
-  });
+  const [trust, setTrust] = useState(INITIAL_TRUST);
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [history, setHistory] = useState(() => {
-    const saved = localStorage.getItem("fridgeguard-history");
-    return saved ? JSON.parse(saved) : [
-      { id: 1, text: "Priya added Curd to the fridge", time: "2 hours ago", icon: "➕" },
-      { id: 2, text: "Arjun's Butter was flagged missing", time: "1 hour ago", icon: "⚠️" },
-      { id: 3, text: "Arjun's trust score dropped to 74", time: "1 hour ago", icon: "📉" },
-      { id: 4, text: "Priya's Chapati was flagged missing", time: "45 mins ago", icon: "⚠️" },
-      { id: 5, text: "Rahul added Mango Juice to the fridge", time: "30 mins ago", icon: "➕" },
-    ];
-  });
+  const [history, setHistory] = useState([]);
 
   const user = USERS.find(u => u.id === currentUser);
+
+  useEffect(() => {
+    async function loadAll() {
+      const { data: itemsData } = await supabase.from("items").select("*");
+      if (itemsData && itemsData.length > 0) setItems(itemsData);
+
+      const { data: trustData } = await supabase.from("trust_scores").select("*");
+      if (trustData && trustData.length > 0) {
+        const trustObj = {};
+        trustData.forEach(row => { trustObj[row.user_id] = row.score; });
+        setTrust(trustObj);
+      }
+
+      const { data: historyData } = await supabase.from("history").select("*").order("created_at", { ascending: false }).limit(20);
+      if (historyData && historyData.length > 0) {
+        setHistory(historyData.map(h => ({
+          id: h.id,
+          text: formatHistory(h),
+          icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
+          time: "Recently",
+        })));
+      }
+    }
+    loadAll();
+  }, []);
+
+  function formatHistory(h) {
+    const owner = USERS.find(u => u.id === h.user_id);
+    if (h.action === "added") return `${owner?.name} added ${h.item_name} to the fridge`;
+    if (h.action === "flagged") return `${h.item_name} was flagged missing`;
+    if (h.action === "trust_drop") return `${owner?.name}'s trust score dropped`;
+    return h.action;
+  }
+
+  async function addHistoryEntry(userId, action, itemName) {
+    await supabase.from("history").insert([{ user_id: userId, action, item_name: itemName }]);
+  }
 
   function login(userId) {
     setCurrentUser(userId);
@@ -63,26 +86,40 @@ export default function App() {
     setCurrentUser(null);
   }
 
-  function addItem() {
+  async function addItem() {
     if (!newItem.name.trim()) return;
-    setItems([...items, {
-      id: Date.now(), name: newItem.name, icon: newItem.icon,
-      owner: currentUser, expiry: newItem.expiry, missing: false,
-    }]);
-    setHistory(prev => [
-      { id: Date.now(), text: `${user.name} added ${newItem.icon} ${newItem.name} to the fridge`, time: "Just now", icon: "➕" },
-      ...prev,
-    ]);
+    const item = {
+      name: newItem.name,
+      icon: newItem.icon,
+      owner: currentUser,
+      expiry: newItem.expiry,
+      missing: false,
+    };
+    const { data } = await supabase.from("items").insert([item]).select();
+    if (data) {
+      setItems([...items, data[0]]);
+      await addHistoryEntry(currentUser, "added", newItem.name);
+      setHistory(prev => [
+        { id: Date.now(), text: `${user.name} added ${newItem.icon} ${newItem.name} to the fridge`, time: "Just now", icon: "➕" },
+        ...prev,
+      ]);
+    }
     setNewItem({ name: "", icon: "🍱", expiry: "ok" });
     setShowAdd(false);
   }
 
-  function flagMissing(id) {
+  async function flagMissing(id) {
     const item = items.find(i => i.id === id);
     const owner = USERS.find(u => u.id === item.owner);
+    await supabase.from("items").update({ missing: true }).eq("id", id);
     setItems(items.map(i => i.id === id ? { ...i, missing: true } : i));
-    setTrust(prev => ({ ...prev, [item.owner]: Math.max(0, prev[item.owner] - 10) }));
+
     const newScore = Math.max(0, trust[item.owner] - 10);
+    await supabase.from("trust_scores").update({ score: newScore }).eq("user_id", item.owner);
+    setTrust(prev => ({ ...prev, [item.owner]: newScore }));
+
+    await addHistoryEntry(item.owner, "flagged", item.name);
+    await addHistoryEntry(item.owner, "trust_drop", item.name);
     setHistory(prev => [
       { id: Date.now(), text: `${item.icon} ${item.name} was flagged missing`, time: "Just now", icon: "⚠️" },
       { id: Date.now() + 1, text: `${owner.name}'s trust score dropped to ${newScore}`, time: "Just now", icon: "📉" },
@@ -90,7 +127,8 @@ export default function App() {
     ]);
   }
 
-  function removeItem(id) {
+  async function removeItem(id) {
+    await supabase.from("items").delete().eq("id", id);
     setItems(items.filter(i => i.id !== id));
   }
 
@@ -112,18 +150,6 @@ export default function App() {
     setAiLoading(false);
   }
 
-  useEffect(() => {
-    localStorage.setItem("fridgeguard-items", JSON.stringify(items));
-  }, [items]);
-
-  useEffect(() => {
-    localStorage.setItem("fridgeguard-trust", JSON.stringify(trust));
-  }, [trust]);
-
-  useEffect(() => {
-    localStorage.setItem("fridgeguard-history", JSON.stringify(history));
-  }, [history]);
-  
   const myItems    = items.filter(i => i.owner === currentUser);
   const otherItems = items.filter(i => i.owner !== currentUser);
   const alerts     = items.filter(i => i.missing || i.expiry === "bad");
@@ -143,7 +169,6 @@ export default function App() {
     statCard:   { background: "white", borderRadius: 14, padding: 16, flex: 1, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", textAlign: "center" },
   };
 
-  // LOGIN SCREEN
   if (screen === "login") return (
     <div style={s.page}>
       <div style={s.center}>
@@ -174,12 +199,10 @@ export default function App() {
     </div>
   );
 
-  // MAIN APP
   return (
     <div style={s.page}>
       <div style={s.appWrap}>
 
-        {/* Header */}
         <div style={s.header}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 24 }}>🧊</span>
@@ -191,7 +214,6 @@ export default function App() {
           <button onClick={logout} style={s.btn("#F3F4F6", "#6B7280")}>← Switch</button>
         </div>
 
-        {/* Stats */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
           <div style={s.statCard}>
             <div style={{ fontSize: 22, fontWeight: 700, color: "#4F46E5" }}>{myItems.length}</div>
@@ -207,7 +229,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div style={s.tabRow}>
           {["fridge", "alerts", "trust", "ai", "history"].map(t => (
             <button key={t} style={s.tab(tab === t)} onClick={() => setTab(t)}>
@@ -216,7 +237,6 @@ export default function App() {
           ))}
         </div>
 
-        {/* Fridge Tab */}
         {tab === "fridge" && (
           <div>
             <p style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5", marginBottom: 10 }}>Your Items</p>
@@ -281,7 +301,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Alerts Tab */}
         {tab === "alerts" && (
           <div>
             {alerts.length === 0 && <p style={{ color: "#9CA3AF", fontSize: 13 }}>No alerts right now 🎉</p>}
@@ -301,7 +320,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Trust Tab */}
         {tab === "trust" && (
           <div>
             <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 14 }}>🏆 Trust Leaderboard</p>
@@ -334,7 +352,6 @@ export default function App() {
           </div>
         )}
 
-        {/* AI Tab */}
         {tab === "ai" && (
           <div>
             <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>🤖 FridgeGuard AI</p>
@@ -357,10 +374,10 @@ export default function App() {
           </div>
         )}
 
-        {/* History Tab */}
         {tab === "history" && (
           <div>
             <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 14 }}>📋 Activity History</p>
+            {history.length === 0 && <p style={{ color: "#9CA3AF", fontSize: 13 }}>No activity yet.</p>}
             {history.map(h => (
               <div key={h.id} style={{ background: "white", border: "1px solid #F3F4F6",
                 borderLeft: `4px solid ${h.icon === "⚠️" ? "#DC2626" : h.icon === "📉" ? "#D97706" : "#059669"}`,
