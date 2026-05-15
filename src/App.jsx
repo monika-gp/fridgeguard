@@ -82,7 +82,7 @@ export default function App() {
           id: h.id,
           text: formatHistory(h),
           icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
-          time: "Recently",
+          time: formatTime(h.created_at),
         })));
       }
     }
@@ -112,7 +112,7 @@ export default function App() {
             id: h.id,
             text: formatHistory(h),
             icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
-            time: "Recently",
+            time: formatTime(h.created_at),
           })));
         });
       })
@@ -180,6 +180,20 @@ export default function App() {
     if (h.action === "flagged") return `${h.item_name} was flagged missing`;
     if (h.action === "trust_drop") return `${owner?.name}'s trust score dropped`;
     return h.action;
+  }
+
+  function formatTime(timestamp) {
+    if (!timestamp) return "Recently";
+    const now = new Date();
+    const then = new Date(timestamp);
+    const diffMs = now - then;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
   }
 
   async function addHistoryEntry(userId, action, itemName) {
