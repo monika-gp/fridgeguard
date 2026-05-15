@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+
 const USER_PROFILES = {
   "priya@fridgeguard.com":  { id: "priya",  name: "Priya",  emoji: "🟣", color: "#7C3AED" },
   "rahul@fridgeguard.com":  { id: "rahul",  name: "Rahul",  emoji: "🟢", color: "#059669" },
@@ -17,16 +18,9 @@ const USERS = [
 
 const INITIAL_TRUST = { priya: 95, rahul: 58, sneha: 89, arjun: 74 };
 
-const INITIAL_ITEMS = [
-  { id: 1, name: "Curd",        icon: "🥛", owner: "priya",  expiry: "soon", missing: false },
-  { id: 2, name: "Chapati",     icon: "🫓", owner: "priya",  expiry: "bad",  missing: true  },
-  { id: 3, name: "Mango Juice", icon: "🥭", owner: "rahul",  expiry: "ok",   missing: false },
-  { id: 4, name: "Biryani Box", icon: "🍱", owner: "rahul",  expiry: "bad",  missing: false },
-  { id: 5, name: "Eggs (6)",    icon: "🥚", owner: "sneha",  expiry: "ok",   missing: false },
-  { id: 6, name: "Butter",      icon: "🧈", owner: "arjun",  expiry: "soon", missing: true  },
-];
-
 const EXPIRY_LABEL = { ok: "✅ Fresh", soon: "⚠️ Expires soon", bad: "❌ Expires today" };
+const EXPIRY_COLOR = { ok: "#D1FAE5", soon: "#FEF3C7", bad: "#FEE2E2" };
+const EXPIRY_TEXT  = { ok: "#065F46", soon: "#92400E", bad: "#991B1B" };
 
 function getExpiryStatus(dateStr) {
   if (!dateStr) return "ok";
@@ -39,12 +33,10 @@ function getExpiryStatus(dateStr) {
 }
 
 function formatExpiryDate(dateStr) {
-  if (!dateStr) return "No expiry set";
+  if (!dateStr) return "";
   const expiry = new Date(dateStr);
   return expiry.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
-const EXPIRY_COLOR = { ok: "#D1FAE5", soon: "#FEF3C7", bad: "#FEE2E2" };
-const EXPIRY_TEXT  = { ok: "#065F46", soon: "#92400E", bad: "#991B1B" };
 
 export default function App() {
   const [screen, setScreen] = useState("login");
@@ -84,21 +76,17 @@ export default function App() {
         setHistory(historyData.map(h => ({
           id: h.id,
           text: formatHistory(h),
-          icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
+          icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : h.action === "fridge_opened" ? "🚪" : "📉",
           time: formatTime(h.created_at),
         })));
       }
     }
     loadAll();
 
-    // REALTIME LISTENERS
     const itemsSub = supabase
       .channel("any")
-      .on("postgres_changes", { event: "*", schema: "public", table: "items" }, (payload) => {
-        console.log("Realtime items change:", payload);
-        supabase.from("items").select("*").then(({ data }) => {
-          if (data) setItems(data);
-        });
+      .on("postgres_changes", { event: "*", schema: "public", table: "items" }, () => {
+        supabase.from("items").select("*").then(({ data }) => { if (data) setItems(data); });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "trust_scores" }, () => {
         supabase.from("trust_scores").select("*").then(({ data }) => {
@@ -114,21 +102,16 @@ export default function App() {
           if (data) setHistory(data.map(h => ({
             id: h.id,
             text: formatHistory(h),
-            icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
+            icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : h.action === "fridge_opened" ? "🚪" : "📉",
             time: formatTime(h.created_at),
           })));
         });
       })
-      .subscribe((status) => {
-        console.log("Realtime status:", status);
-      });
+      .subscribe((status) => { console.log("Realtime status:", status); });
 
-    return () => {
-      supabase.removeChannel(itemsSub);
-    };
+    return () => { supabase.removeChannel(itemsSub); };
   }, []);
 
-  // Auto refresh dashboard every 10 seconds
   useEffect(() => {
     if (tab !== "stats") return;
     const interval = setInterval(async () => {
@@ -142,46 +125,14 @@ export default function App() {
       }
     }, 10000);
     return () => clearInterval(interval);
-
-    const trustSub = supabase
-      .channel("trust-channel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "trust_scores" }, () => {
-        supabase.from("trust_scores").select("*").then(({ data }) => {
-          if (data) {
-            const trustObj = {};
-            data.forEach(row => { trustObj[row.user_id] = row.score; });
-            setTrust(trustObj);
-          }
-        });
-      })
-      .subscribe();
-
-    const historySub = supabase
-      .channel("history-channel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "history" }, () => {
-        supabase.from("history").select("*").order("created_at", { ascending: false }).limit(20).then(({ data }) => {
-          if (data) setHistory(data.map(h => ({
-            id: h.id,
-            text: formatHistory(h),
-            icon: h.action === "added" ? "➕" : h.action === "flagged" ? "⚠️" : "📉",
-            time: "Recently",
-          })));
-        });
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(itemsSub);
-      supabase.removeChannel(trustSub);
-      supabase.removeChannel(historySub);
-    };
-  }, []);
+  }, [tab]);
 
   function formatHistory(h) {
     const owner = USERS.find(u => u.id === h.user_id);
     if (h.action === "added") return `${owner?.name} added ${h.item_name} to the fridge`;
     if (h.action === "flagged") return `${h.item_name} was flagged missing`;
     if (h.action === "trust_drop") return `${owner?.name}'s trust score dropped`;
+    if (h.action === "fridge_opened") return `${owner?.name} opened the fridge — ${h.item_name}`;
     return h.action;
   }
 
@@ -206,7 +157,7 @@ export default function App() {
   async function login(email, password) {
     setLoginError("");
     setLoginLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setLoginError("Wrong email or password. Try again!");
       setLoginLoading(false);
@@ -254,11 +205,9 @@ export default function App() {
     const owner = USERS.find(u => u.id === item.owner);
     await supabase.from("items").update({ missing: true }).eq("id", id);
     setItems(items.map(i => i.id === id ? { ...i, missing: true } : i));
-
     const newScore = Math.max(0, trust[item.owner] - 10);
     await supabase.from("trust_scores").update({ score: newScore }).eq("user_id", item.owner);
     setTrust(prev => ({ ...prev, [item.owner]: newScore }));
-
     await addHistoryEntry(item.owner, "flagged", item.name);
     await addHistoryEntry(item.owner, "trust_drop", item.name);
     setHistory(prev => [
@@ -272,6 +221,7 @@ export default function App() {
     await supabase.from("items").delete().eq("id", id);
     setItems(items.filter(i => i.id !== id));
   }
+
   async function startSensor() {
     if (!window.DeviceMotionEvent) {
       alert("Your device doesn't support motion sensing!");
@@ -279,10 +229,7 @@ export default function App() {
     }
     if (typeof DeviceMotionEvent.requestPermission === 'function') {
       const permission = await DeviceMotionEvent.requestPermission();
-      if (permission !== 'granted') {
-        alert("Motion permission denied!");
-        return;
-      }
+      if (permission !== 'granted') { alert("Motion permission denied!"); return; }
     }
     setSensorActive(true);
     let lastShake = 0;
@@ -318,7 +265,7 @@ export default function App() {
     setAiLoading(true);
     setAiMessage("Thinking...");
     await new Promise(r => setTimeout(r, 2000));
-    const myItems    = items.filter(i => i.owner === currentUser && i.name.toLowerCase().includes(search.toLowerCase()));
+    const myItems = items.filter(i => i.owner === currentUser);
     const missingItems = items.filter(i => i.missing && i.owner === currentUser);
     const expiringItems = items.filter(i => (i.expiry === "bad" || i.expiry === "soon") && i.owner === currentUser);
     const myTrust = trust[currentUser];
@@ -361,63 +308,44 @@ export default function App() {
             <p style={{ color: "#6B7280", margin: "6px 0 0", fontSize: 14 }}>Smart hostel fridge assistant</p>
             <div style={{ width: 40, height: 3, background: "linear-gradient(90deg,#4F46E5,#7C3AED)", borderRadius: 99, margin: "12px auto 0" }} />
           </div>
-
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>Email</label>
-            <input
-              type="email"
-              placeholder="priya@fridgeguard.com"
-              value={loginForm.email}
+            <input type="email" placeholder="priya@fridgeguard.com" value={loginForm.email}
               onChange={e => setLoginForm({ ...loginForm, email: e.target.value })}
-              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #E5E7EB",
-                fontSize: 14, boxSizing: "border-box", outline: "none" }}
-            />
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
           </div>
-
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>Password</label>
-            <input
-              type="password"
-              placeholder="Your password"
-              value={loginForm.password}
+            <input type="password" placeholder="Your password" value={loginForm.password}
               onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
-              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #E5E7EB",
-                fontSize: 14, boxSizing: "border-box", outline: "none" }}
-            />
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
           </div>
-
           {loginError && (
-            <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "8px 12px",
-              borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+            <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
               {loginError}
             </div>
           )}
-
-          <button
-            onClick={() => login(loginForm.email, loginForm.password)}
-            disabled={loginLoading}
+          <button onClick={() => login(loginForm.email, loginForm.password)} disabled={loginLoading}
             style={{ ...s.primaryBtn, opacity: loginLoading ? 0.7 : 1, cursor: loginLoading ? "not-allowed" : "pointer" }}>
             {loginLoading ? "⏳ Logging in..." : "🔐 Login"}
           </button>
-
           <div style={{ marginTop: 20, padding: 14, background: "#F5F3FF", borderRadius: 12 }}>
             <p style={{ fontSize: 11, color: "#7C3AED", fontWeight: 600, marginBottom: 8 }}>Demo accounts:</p>
             {Object.entries(USER_PROFILES).map(([email, profile]) => (
               <div key={email} onClick={() => setLoginForm({ email, password: `${profile.name}@123` })}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0",
-                  cursor: "pointer", borderBottom: "1px solid #EDE9FE" }}>
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer", borderBottom: "1px solid #EDE9FE" }}>
                 <span>{profile.emoji}</span>
                 <span style={{ fontSize: 12, color: "#4F46E5" }}>{email}</span>
               </div>
             ))}
             <p style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>Click any account to autofill</p>
           </div>
-
           <p style={{ fontSize: 11, color: "#D1D5DB", textAlign: "center", marginTop: 12 }}>Room 4B · 4 roommates</p>
         </div>
       </div>
     </div>
   );
+
   return (
     <div style={s.page}>
       <div style={s.appWrap}>
@@ -458,22 +386,18 @@ export default function App() {
 
         {tab === "fridge" && (
           <div>
-            <input
             {/* IoT Sensor Panel */}
             <div style={{ background: sensorActive ? "#D1FAE5" : "#F5F3FF",
               border: `1px solid ${sensorActive ? "#059669" : "#DDD8FF"}`,
               borderRadius: 14, padding: 14, marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1F2937" }}>
-                    📱 Phone as IoT Sensor
-                  </div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1F2937" }}>📱 Phone as IoT Sensor</div>
                   <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
-                    {sensorActive ? `✅ Active — shake phone to log fridge access` : "Tap to activate motion sensor"}
+                    {sensorActive ? "✅ Active — shake phone to log fridge access" : "Tap to activate motion sensor"}
                   </div>
                 </div>
-                <button
-                  onClick={sensorActive ? stopSensor : startSensor}
+                <button onClick={sensorActive ? stopSensor : startSensor}
                   style={{ padding: "8px 14px", borderRadius: 10, border: "none",
                     background: sensorActive ? "#DC2626" : "#4F46E5",
                     color: "white", cursor: "pointer", fontWeight: 500, fontSize: 13 }}>
@@ -493,12 +417,12 @@ export default function App() {
                 </div>
               )}
             </div>
-            placeholder="🔍 Search items..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #E5E7EB",
-            marginBottom: 14, boxSizing: "border-box", fontSize: 14, outline: "none" }}
-            />
+
+            <input placeholder="🔍 Search items..." value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #E5E7EB",
+                marginBottom: 14, boxSizing: "border-box", fontSize: 14, outline: "none" }} />
+
             <p style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5", marginBottom: 10 }}>Your Items</p>
             {myItems.length === 0 && <p style={{ color: "#9CA3AF", fontSize: 13 }}>You have no items in the fridge.</p>}
             {myItems.map(item => (
@@ -509,8 +433,8 @@ export default function App() {
                     {item.name} {item.missing && <span style={{ color: "#DC2626", fontSize: 12 }}>⚠️ Missing</span>}
                   </div>
                   <span style={s.badge(item.expiry)}>
-  {EXPIRY_LABEL[item.expiry]} {item.expiry_date ? `· ${formatExpiryDate(item.expiry_date)}` : ""}
-</span>
+                    {EXPIRY_LABEL[item.expiry]} {item.expiry_date ? `· ${formatExpiryDate(item.expiry_date)}` : ""}
+                  </span>
                 </div>
                 <button onClick={() => removeItem(item.id)} style={s.btn("#FEE2E2", "#DC2626")}>Remove</button>
               </div>
@@ -528,17 +452,12 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{ marginBottom: 10 }}>
-  <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>
-    Expiry Date
-  </label>
-  <input
-    type="date"
-    value={newItem.expiryDate || ""}
-    min={new Date().toISOString().split("T")[0]}
-    onChange={e => setNewItem({ ...newItem, expiryDate: e.target.value, expiry: getExpiryStatus(e.target.value) })}
-    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 14, boxSizing: "border-box" }}
-  />
-</div>
+                  <label style={{ fontSize: 12, color: "#6B7280", marginBottom: 4, display: "block" }}>Expiry Date</label>
+                  <input type="date" value={newItem.expiryDate || ""}
+                    min={new Date().toISOString().split("T")[0]}
+                    onChange={e => setNewItem({ ...newItem, expiryDate: e.target.value, expiry: getExpiryStatus(e.target.value) })}
+                    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 14, boxSizing: "border-box" }} />
+                </div>
                 <button onClick={addItem} style={s.primaryBtn}>➕ Add to Fridge</button>
               </div>
             ) : (
@@ -561,8 +480,8 @@ export default function App() {
                     </div>
                     <div style={{ fontSize: 12, color: "#9CA3AF" }}>{owner.emoji} {owner.name}</div>
                     <span style={s.badge(item.expiry)}>
-  {EXPIRY_LABEL[item.expiry]} {item.expiry_date ? `· ${formatExpiryDate(item.expiry_date)}` : ""}
-</span>
+                      {EXPIRY_LABEL[item.expiry]} {item.expiry_date ? `· ${formatExpiryDate(item.expiry_date)}` : ""}
+                    </span>
                   </div>
                   <button onClick={() => flagMissing(item.id)} style={s.btn("#FEF3C7", "#92400E")}>Flag</button>
                 </div>
@@ -636,7 +555,7 @@ export default function App() {
             )}
             <button onClick={askAI} disabled={aiLoading} style={{
               ...s.primaryBtn, opacity: aiLoading ? 0.7 : 1, cursor: aiLoading ? "not-allowed" : "pointer" }}>
-              {aiLoading ? "⏳ Getting your summary..." : `✨ Get my fridge summary`}
+              {aiLoading ? "⏳ Getting your summary..." : "✨ Get my fridge summary"}
             </button>
             <p style={{ fontSize: 11, color: "#9CA3AF", marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>
               AI reads your fridge in real time and gives<br/>personalized advice for {user.name}
@@ -650,7 +569,7 @@ export default function App() {
             {history.length === 0 && <p style={{ color: "#9CA3AF", fontSize: 13 }}>No activity yet.</p>}
             {history.map(h => (
               <div key={h.id} style={{ background: "white", border: "1px solid #F3F4F6",
-                borderLeft: `4px solid ${h.icon === "⚠️" ? "#DC2626" : h.icon === "📉" ? "#D97706" : "#059669"}`,
+                borderLeft: `4px solid ${h.icon === "⚠️" ? "#DC2626" : h.icon === "📉" ? "#D97706" : h.icon === "🚪" ? "#4F46E5" : "#059669"}`,
                 borderRadius: 14, padding: 14, marginBottom: 10,
                 display: "flex", alignItems: "center", gap: 12,
                 boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -663,13 +582,10 @@ export default function App() {
             ))}
           </div>
         )}
-        
-      {/* Stats Tab */}
+
         {tab === "stats" && (
           <div>
             <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 16 }}>📊 Analytics Dashboard</p>
-
-            {/* Summary cards */}
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               <div style={{ ...s.statCard, flex: 1 }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: "#4F46E5" }}>{items.length}</div>
@@ -684,8 +600,6 @@ export default function App() {
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Expiring</div>
               </div>
             </div>
-
-            {/* Items per roommate bar chart */}
             <div style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Items per Roommate</p>
               <ResponsiveContainer width="100%" height={180}>
@@ -702,20 +616,16 @@ export default function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-
-            {/* Expiry breakdown pie chart */}
             <div style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Expiry Status Breakdown</p>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
-                  <Pie
-                    data={[
-                      { name: "Fresh", value: items.filter(i => i.expiry === "ok").length },
-                      { name: "Expires Soon", value: items.filter(i => i.expiry === "soon").length },
-                      { name: "Expires Today", value: items.filter(i => i.expiry === "bad").length },
-                    ]}
-                    cx="50%" cy="50%" outerRadius={70}
-                    dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                  <Pie data={[
+                    { name: "Fresh", value: items.filter(i => i.expiry === "ok").length },
+                    { name: "Expires Soon", value: items.filter(i => i.expiry === "soon").length },
+                    { name: "Expires Today", value: items.filter(i => i.expiry === "bad").length },
+                  ]} cx="50%" cy="50%" outerRadius={70} dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}>
                     <Cell fill="#059669" />
                     <Cell fill="#D97706" />
                     <Cell fill="#DC2626" />
@@ -724,26 +634,17 @@ export default function App() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-
-            {/* Trust score comparison */}
             <div style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Trust Score Comparison</p>
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={USERS.map(u => ({
-                  name: u.name,
-                  score: trust[u.id] || 0,
-                }))}>
+                <BarChart data={USERS.map(u => ({ name: u.name, score: trust[u.id] || 0 }))}>
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis domain={[0,100]} tick={{ fontSize: 12 }} />
                   <Tooltip />
-                  <Bar dataKey="score" radius={[4,4,0,0]} name="Trust Score"
-                    fill="#4F46E5"
-                  />
+                  <Bar dataKey="score" fill="#4F46E5" radius={[4,4,0,0]} name="Trust Score" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-
-            {/* Most active user */}
             <div style={{ background: "white", borderRadius: 14, padding: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Most Active Roommate</p>
               {USERS.map(u => {
@@ -763,6 +664,7 @@ export default function App() {
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
