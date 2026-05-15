@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { useState, useEffect } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 const USER_PROFILES = {
   "priya@fridgeguard.com":  { id: "priya",  name: "Priya",  emoji: "🟣", color: "#7C3AED" },
   "rahul@fridgeguard.com":  { id: "rahul",  name: "Rahul",  emoji: "🟢", color: "#059669" },
@@ -374,9 +375,9 @@ export default function App() {
         </div>
 
         <div style={s.tabRow}>
-          {["fridge", "alerts", "trust", "ai", "history"].map(t => (
+          {["fridge", "alerts", "trust", "ai", "history", "stats"].map(t => (
             <button key={t} style={s.tab(tab === t)} onClick={() => setTab(t)}>
-              {t === "fridge" ? "🧊" : t === "alerts" ? `🔔${alerts.length > 0 ? `(${alerts.length})` : ""}` : t === "trust" ? "🏆" : t === "ai" ? "🤖" : "📋"}
+              {t === "fridge" ? "🧊" : t === "alerts" ? `🔔${alerts.length > 0 ? `(${alerts.length})` : ""}` : t === "trust" ? "🏆" : t === "ai" ? "🤖" : t === "history" ? "📋" : "📊"}
             </button>
           ))}
         </div>
@@ -554,7 +555,105 @@ export default function App() {
             ))}
           </div>
         )}
+      {/* Stats Tab */}
+        {tab === "stats" && (
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 16 }}>📊 Analytics Dashboard</p>
 
+            {/* Summary cards */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <div style={{ ...s.statCard, flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#4F46E5" }}>{items.length}</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Total Items</div>
+              </div>
+              <div style={{ ...s.statCard, flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#DC2626" }}>{items.filter(i => i.missing).length}</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Missing</div>
+              </div>
+              <div style={{ ...s.statCard, flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#D97706" }}>{items.filter(i => i.expiry === "bad").length}</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Expiring</div>
+              </div>
+            </div>
+
+            {/* Items per roommate bar chart */}
+            <div style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Items per Roommate</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={USERS.map(u => ({
+                  name: u.name,
+                  items: items.filter(i => i.owner === u.id).length,
+                  missing: items.filter(i => i.owner === u.id && i.missing).length,
+                }))}>
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="items" fill="#4F46E5" radius={[4,4,0,0]} name="Total" />
+                  <Bar dataKey="missing" fill="#DC2626" radius={[4,4,0,0]} name="Missing" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Expiry breakdown pie chart */}
+            <div style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Expiry Status Breakdown</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: "Fresh", value: items.filter(i => i.expiry === "ok").length },
+                      { name: "Expires Soon", value: items.filter(i => i.expiry === "soon").length },
+                      { name: "Expires Today", value: items.filter(i => i.expiry === "bad").length },
+                    ]}
+                    cx="50%" cy="50%" outerRadius={70}
+                    dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                    <Cell fill="#059669" />
+                    <Cell fill="#D97706" />
+                    <Cell fill="#DC2626" />
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Trust score comparison */}
+            <div style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Trust Score Comparison</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={USERS.map(u => ({
+                  name: u.name,
+                  score: trust[u.id] || 0,
+                }))}>
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[0,100]} tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="score" radius={[4,4,0,0]} name="Trust Score"
+                    fill="#4F46E5"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Most active user */}
+            <div style={{ background: "white", borderRadius: 14, padding: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#1F2937", marginBottom: 12 }}>Most Active Roommate</p>
+              {USERS.map(u => {
+                const count = items.filter(i => i.owner === u.id).length;
+                const pct = items.length > 0 ? Math.round(count / items.length * 100) : 0;
+                return (
+                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <span style={{ fontSize: 18, width: 24 }}>{u.emoji}</span>
+                    <span style={{ fontSize: 13, color: "#1F2937", width: 50 }}>{u.name}</span>
+                    <div style={{ flex: 1, background: "#F3F4F6", borderRadius: 99, height: 8, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, background: "#4F46E5", height: "100%", borderRadius: 99, transition: "width 0.5s" }} />
+                    </div>
+                    <span style={{ fontSize: 12, color: "#6B7280", width: 30 }}>{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
