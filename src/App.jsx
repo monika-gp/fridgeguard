@@ -60,6 +60,9 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [sensorActive, setSensorActive] = useState(false);
+  const [lastAccess, setLastAccess] = useState(null);
+  const [shakeCount, setShakeCount] = useState(0);
   const [history, setHistory] = useState([]);
 
   const user = USERS.find(u => u.id === currentUser);
@@ -269,6 +272,47 @@ export default function App() {
     await supabase.from("items").delete().eq("id", id);
     setItems(items.filter(i => i.id !== id));
   }
+  async function startSensor() {
+    if (!window.DeviceMotionEvent) {
+      alert("Your device doesn't support motion sensing!");
+      return;
+    }
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      const permission = await DeviceMotionEvent.requestPermission();
+      if (permission !== 'granted') {
+        alert("Motion permission denied!");
+        return;
+      }
+    }
+    setSensorActive(true);
+    let lastShake = 0;
+    window.addEventListener('devicemotion', async (event) => {
+      const acc = event.accelerationIncludingGravity;
+      if (!acc) return;
+      const total = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
+      const now = Date.now();
+      if (total > 25 && now - lastShake > 3000) {
+        lastShake = now;
+        setShakeCount(prev => prev + 1);
+        const accessTime = new Date().toLocaleTimeString("en-IN");
+        setLastAccess(accessTime);
+        await supabase.from("history").insert([{
+          user_id: currentUser,
+          action: "fridge_opened",
+          item_name: `Fridge accessed at ${accessTime}`
+        }]);
+        setHistory(prev => [
+          { id: Date.now(), text: `📱 ${user.name} opened the fridge at ${accessTime}`, time: "Just now", icon: "🚪" },
+          ...prev,
+        ]);
+      }
+    });
+  }
+
+  function stopSensor() {
+    setSensorActive(false);
+    window.removeEventListener('devicemotion', () => {});
+  }
 
   async function askAI() {
     setAiLoading(true);
@@ -415,6 +459,40 @@ export default function App() {
         {tab === "fridge" && (
           <div>
             <input
+            {/* IoT Sensor Panel */}
+            <div style={{ background: sensorActive ? "#D1FAE5" : "#F5F3FF",
+              border: `1px solid ${sensorActive ? "#059669" : "#DDD8FF"}`,
+              borderRadius: 14, padding: 14, marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1F2937" }}>
+                    📱 Phone as IoT Sensor
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
+                    {sensorActive ? `✅ Active — shake phone to log fridge access` : "Tap to activate motion sensor"}
+                  </div>
+                </div>
+                <button
+                  onClick={sensorActive ? stopSensor : startSensor}
+                  style={{ padding: "8px 14px", borderRadius: 10, border: "none",
+                    background: sensorActive ? "#DC2626" : "#4F46E5",
+                    color: "white", cursor: "pointer", fontWeight: 500, fontSize: 13 }}>
+                  {sensorActive ? "Stop" : "Activate"}
+                </button>
+              </div>
+              {sensorActive && (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ background: "white", borderRadius: 10, padding: "8px 14px", flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#059669" }}>{shakeCount}</div>
+                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>Accesses detected</div>
+                  </div>
+                  <div style={{ background: "white", borderRadius: 10, padding: "8px 14px", flex: 2, textAlign: "center" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#1F2937" }}>{lastAccess || "No access yet"}</div>
+                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>Last access time</div>
+                  </div>
+                </div>
+              )}
+            </div>
             placeholder="🔍 Search items..."
             value={search}
             onChange={e => setSearch(e.target.value)}
