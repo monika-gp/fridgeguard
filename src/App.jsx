@@ -123,6 +123,22 @@ export default function App() {
     return () => {
       supabase.removeChannel(itemsSub);
     };
+  }, []);
+
+  // Auto refresh dashboard every 10 seconds
+  useEffect(() => {
+    if (tab !== "stats") return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from("items").select("*");
+      if (data) setItems(data);
+      const { data: trustData } = await supabase.from("trust_scores").select("*");
+      if (trustData) {
+        const trustObj = {};
+        trustData.forEach(row => { trustObj[row.user_id] = row.score; });
+        setTrust(trustObj);
+      }
+    }, 10000);
+    return () => clearInterval(interval);
 
     const trustSub = supabase
       .channel("trust-channel")
@@ -555,6 +571,7 @@ export default function App() {
             ))}
           </div>
         )}
+        
       {/* Stats Tab */}
         {tab === "stats" && (
           <div>
